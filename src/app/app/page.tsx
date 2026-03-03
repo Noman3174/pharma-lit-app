@@ -161,7 +161,7 @@ export default function AppHome() {
             {projects.map((p) => (
               <Link
                 key={p.id}
-                href={`/projects/${p.id}`}
+                href={`/app/projects/${p.id}`}
                 className="block border rounded p-3 hover:bg-gray-50"
               >
                 <div className="font-medium">{p.name ?? "(untitled)"}</div>

@@ -1,5 +1,5 @@
 "use client";
-
+console.log("SUPABASE URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";

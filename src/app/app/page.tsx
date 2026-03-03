@@ -33,6 +33,8 @@ export default function AppHome() {
     if (!u) {
       router.push("/login");
       return;
+
+      console.log("getUser()", data?.user);
     }
 
     setUserId(u.id);

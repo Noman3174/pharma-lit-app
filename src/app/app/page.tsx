@@ -10,35 +10,32 @@ type ProjectRow = {
   name: string | null;
   created_at: string;
   user_id: string | null;
-  user_email: string | null;
 };
 
 export default function AppHome() {
   const router = useRouter();
 
   const [userId, setUserId] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-
   const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [newName, setNewName] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
   async function requireUser() {
-    const { data, error } = await supabase.auth.getUser();
-    if (error) console.error(error);
+    const { data } = await supabase.auth.getUser();
 
     const u = data?.user;
+
     if (!u) {
       router.push("/login");
       return;
-
-      console.log("getUser()", data?.user);
     }
 
     setUserId(u.id);
-    setUserEmail(u.email ?? null);
   }
 
   async function loadProjects(uid?: string | null) {
@@ -54,7 +51,6 @@ export default function AppHome() {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error(error);
       alert(error.message);
       setLoading(false);
       return;
@@ -73,13 +69,11 @@ export default function AppHome() {
     const { error } = await supabase.from("projects").insert([
       {
         name: newName.trim(),
-        user_id: userId,          // ✅ IMPORTANT
-        user_email: userEmail,    // optional
+        user_id: userId,
       },
     ]);
 
     if (error) {
-      console.error(error);
       alert(error.message);
       setCreating(false);
       return;
@@ -90,91 +84,164 @@ export default function AppHome() {
     setCreating(false);
   }
 
-  async function logout() {
-    setLoggingOut(true);
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      alert(error.message);
-      setLoggingOut(false);
+  async function deleteSelected() {
+    const ids = Object.keys(selected).filter((k) => selected[k]);
+
+    if (!ids.length) {
+      alert("Select projects first");
       return;
     }
+
+    const ok = confirm("Delete selected projects?");
+    if (!ok) return;
+
+    setDeleting(true);
+
+    await supabase.from("project_studies").delete().in("project_id", ids);
+
+    const { error } = await supabase
+      .from("projects")
+      .delete()
+      .in("id", ids);
+
+    if (error) {
+      alert(error.message);
+      setDeleting(false);
+      return;
+    }
+
+    await loadProjects(userId);
+    setDeleting(false);
+  }
+
+  async function logout() {
+    setLoggingOut(true);
+    await supabase.auth.signOut();
     router.push("/login");
   }
 
+  function toggle(id: string) {
+    setSelected((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  }
+
   useEffect(() => {
-    (async () => {
-      await requireUser();
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    requireUser();
   }, []);
 
   useEffect(() => {
     if (!userId) return;
     loadProjects(userId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Projects</h1>
+    <div className="min-h-screen flex bg-gray-50">
 
-        <button
-          type="button"
-          onClick={logout}
-          disabled={loggingOut}
-          className="border px-3 py-2 rounded"
-        >
-          {loggingOut ? "Logging out..." : "Logout"}
-        </button>
-      </div>
+      {/* SIDEBAR */}
+      <div className="w-64 bg-white border-r p-4 space-y-4">
 
-      <div className="border rounded p-4 space-y-3 bg-white">
-        <div className="font-semibold">Create Project</div>
+        <div className="text-xl font-semibold">
+          Literature Aide
+        </div>
 
-        <div className="flex gap-2">
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">
+            Create Project
+          </div>
+
           <input
-            className="border p-2 rounded flex-1"
-            placeholder="e.g., inj. ceftriaxone"
+            className="border p-2 rounded w-full"
+            placeholder="Project name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
           />
 
           <button
-            type="button"                  // ✅ IMPORTANT
             onClick={createProject}
             disabled={creating}
-            className="bg-black text-white px-4 py-2 rounded disabled:opacity-60"
+            className="w-full bg-black text-white p-2 rounded"
           >
             {creating ? "Creating..." : "Create"}
           </button>
         </div>
+
+        <button
+          onClick={logout}
+          disabled={loggingOut}
+          className="border w-full p-2 rounded"
+        >
+          {loggingOut ? "Logging out..." : "Logout"}
+        </button>
+
       </div>
 
-      <div className="border rounded p-4 bg-white">
-        <div className="font-semibold mb-3">Past Projects</div>
+      {/* MAIN CONTENT */}
+      <div className="flex-1 p-6">
+
+        <div className="flex justify-between mb-4">
+          <h1 className="text-2xl font-semibold">
+            My Projects
+          </h1>
+
+          <button
+            onClick={deleteSelected}
+            disabled={deleting}
+            className="bg-red-600 text-white px-4 py-2 rounded"
+          >
+            {deleting ? "Deleting..." : "Delete Selected"}
+          </button>
+        </div>
 
         {loading ? (
-          <div className="text-sm text-gray-500">Loading...</div>
+          <div>Loading...</div>
         ) : projects.length ? (
           <div className="space-y-2">
+
             {projects.map((p) => (
-              <Link
+              <div
                 key={p.id}
-                href={`/app/projects/${p.id}`}
-                className="block border rounded p-3 hover:bg-gray-50"
+                className="border rounded p-3 flex justify-between items-center"
               >
-                <div className="font-medium">{p.name ?? "(untitled)"}</div>
-                <div className="text-xs text-gray-500">{p.id}</div>
-              </Link>
+
+                <div className="flex items-center gap-3">
+
+                  <input
+                    type="checkbox"
+                    checked={selected[p.id] || false}
+                    onChange={() => toggle(p.id)}
+                  />
+
+                  <div>
+                    <div className="font-medium">
+                      {p.name ?? "(untitled)"}
+                    </div>
+
+                    <div className="text-xs text-gray-500">
+                      {new Date(p.created_at).toLocaleString()}
+                    </div>
+                  </div>
+
+                </div>
+
+                <Link
+                  href={`/app/projects/${p.id}`}
+                  className="border px-3 py-1 rounded"
+                >
+                  Open
+                </Link>
+
+              </div>
             ))}
+
           </div>
         ) : (
-          <div className="text-sm text-gray-500">
-            No projects found for this user.
-          </div>
+          <div>No projects yet.</div>
         )}
+
       </div>
+
     </div>
   );
 }
